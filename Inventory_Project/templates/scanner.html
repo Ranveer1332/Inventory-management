@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>POS Scanner - Cashier</title>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: linear-gradient(135deg, #0f2027, #203a43, #2c5364); color: #fff; padding: 20px; margin: 0;}
+        .header { display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.5); padding: 10px 20px; border-radius: 8px; margin-bottom: 20px;}
+        .container { display: flex; gap: 20px; }
+        .left-panel { width: 45%; }
+        .right-panel { width: 55%; background: rgba(0,0,0,0.6); padding: 20px; border-radius: 12px; border: 1px solid #00d2ff;}
+        #reader { width: 100%; border-radius: 10px; border: 2px solid #00d2ff; background: white;}
+        #reader video { transform: scaleX(-1); }
+        .manual-box { margin-top: 20px; display: flex; gap: 10px;}
+        input { padding: 10px; border-radius: 5px; flex: 1; border: 1px solid #00d2ff; background: rgba(0,0,0,0.5); color: white;}
+        button { padding: 10px 15px; background: #00d2ff; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; color: white;}
+        table { width: 100%; border-collapse: collapse; margin-top: 15px;}
+        th, td { padding: 10px; text-align: left; border-bottom: 1px dashed rgba(255,255,255,0.2); }
+        th { color: #00d2ff; text-transform: uppercase;}
+        .total-box { font-size: 24px; color: #00ff00; text-align: right; margin-top: 20px; font-weight: bold;}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <span>Role: <strong>CASHIER</strong></span>
+        <h2 style="margin:0; color:#00d2ff;">Smart Billing Desk</h2>
+        <a href="/logout" style="color:#ff4757; text-decoration:none;">Logout</a>
+    </div>
+
+    <div class="container">
+        <div class="left-panel">
+            <div class="scan-settings" style="margin-bottom: 15px; background: rgba(0,0,0,0.5); padding: 10px; border-radius: 8px; border: 1px dashed #00d2ff;">
+                <label style="color: #00d2ff; font-weight: bold; font-size: 14px;">Multiplier (Qty):</label>
+                <input type="number" id="cashierQty" value="1" min="1" style="width: 60px; padding: 5px; border-radius: 4px; border: 1px solid #00d2ff; background: #222; color: #00ff00; font-weight: bold; margin-left: 10px;">
+                <span style="font-size: 11px; color: #aaa; margin-left: 10px;">(Auto-resets to 1 after scan)</span>
+            </div>
+            
+            <div id="reader"></div>
+            <div id="reader"></div>
+            <div class="manual-box">
+                <input type="text" id="manualCode" placeholder="Enter Barcode manually">
+                <button onclick="sendManualCode()">Scan Item</button>
+            </div>
+            <div style="margin-top:20px; font-family:monospace; color:#aaa; background:#000; padding:10px; border-radius:5px;" id="os-log">> System Ready... Buffer: 0/50</div>
+        </div>
+
+        <div class="right-panel">
+            <h3 style="margin-top:0; color:#00d2ff;">Current Bill</h3>
+            <table id="billTable">
+                <tr><th>Item</th><th>Barcode</th><th>Qty</th><th>Price</th></tr>
+            </table>
+            <div class="total-box">Total: ₹<span id="billTotal">0</span></div>
+            <button style="width:100%; margin-top:20px; background:#00ff00; color:#000; padding:15px; font-size:16px;" onclick="alert('Checkout Complete! OS Buffer will safely write to Database.'); location.reload();">Print Bill & Checkout</button>
+        </div>
+    </div>
+
+    <script>
+        let currentTotal = 0;
+        let isProcessing = false; 
+        
+        // NAYA: Bill mein kya-kya hai, usko yaad rakhne ke liye memory
+        let billItems = {}; 
+
+        function updateBillUI(barcode) {
+            fetch(`/get_product/${barcode}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === "error") {
+                    console.error("Item not found!");
+                    return; // Agar galat scan hua toh bill mein add nahi hoga
+                }
+
+                let table = document.getElementById('billTable');
+
+                // SMART LOGIC: Check karo kya item pehle se bill mein hai?
+                if (billItems[barcode]) {
+                    // Agar hai, toh sirf Qty badhao
+                    billItems[barcode].qty += 1; 
+                    
+                    // Purani row ko dhoond kar update karo
+                    let existingRow = document.getElementById(`row-${barcode}`);
+                    existingRow.cells[2].innerText = billItems[barcode].qty; // Update Qty UI
+                    existingRow.cells[3].innerText = `₹${billItems[barcode].qty * data.price}`; // Update Item Total Price
+                } else {
+                    // Agar naya item hai, toh pehli baar memory mein daalo
+                    billItems[barcode] = { name: data.name, price: data.price, qty: 1 };
+                    
+                    // Nayi row create karo (Isko ek ID de rahe hain taaki baad mein dhoond sakein)
+                    let row = table.insertRow(-1);
+                    row.id = `row-${barcode}`; 
+                    row.innerHTML = `<td>${data.name}</td><td>#${barcode}</td><td style="font-weight:bold;">1</td><td style="color:#00ff00;">₹${data.price}</td>`;
+                }
+                
+                // Grand Total Update
+                currentTotal += data.price;
+                document.getElementById('billTotal').innerText = currentTotal;
+            });
+        }
+
+        // --- Baaki neeche ka code same rahega ---
+        function sendDataToOS(code) {
+            fetch('/add_to_buffer', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({barcode: code})
+            }).then(res => res.json()).then(data => {
+                document.getElementById('os-log').innerText = `> Scanned: ${code} | Buffer: ${data.buffer_size}/50`;
+                updateBillUI(code);
+                setTimeout(() => { isProcessing = false; }, 2000); 
+            });
+        }
+        
+
+        function sendManualCode() {
+            let val = document.getElementById('manualCode').value;
+            if(val) { sendDataToOS(val); document.getElementById('manualCode').value = ''; }
+        }
+
+        // THE BULLETPROOF SCANNER FUNCTION
+        function onScanSuccess(decodedText) {
+            if (isProcessing) return; // Agar pehle se process ho raha hai, toh naya scan ignore karo!
+            isProcessing = true; // Lock laga do
+            
+            console.log("Scanned:", decodedText); // Terminal checking ke liye
+            sendDataToOS(decodedText);
+            // Library ka pause hata diya hai, ab freeze nahi hoga!
+        }
+        
+        let html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: {width: 250, height: 250} }, false);
+        html5QrcodeScanner.render(onScanSuccess);
+    </script>
+
+    
+</body>
+</html>

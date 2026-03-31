@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Stock Portal - Inventory</title>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: linear-gradient(135deg, #0f2027, #203a43, #2c5364); color: #fff; padding: 20px; margin: 0; }
+        .header { display: flex; justify-content: space-between; background: rgba(0,0,0,0.5); padding: 10px 20px; border-radius: 8px; margin-bottom: 20px;}
+        .container { display: flex; gap: 20px; }
+        .input-section { width: 40%; }
+        .table-box { width: 60%; background: rgba(0,0,0,0.4); padding: 20px; border-radius: 12px; overflow-y: scroll; max-height: 80vh;}
+        .scanner-box, .form-box { background: rgba(0, 0, 0, 0.6); padding: 15px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #00d2ff;}
+        #reader { width: 100%; border-radius: 8px; background: white;}
+        #reader video { transform: scaleX(-1); }
+        input, select { width: 90%; padding: 10px; margin-bottom: 15px; border-radius: 5px; background: rgba(0,0,0,0.5); color: white; border: 1px solid #00d2ff;}
+        button { width: 100%; padding: 12px; background: #00d2ff; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; color:white;}
+        table { width: 100%; border-collapse: collapse; margin-top: 10px;}
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        th { color: #00d2ff; text-transform: uppercase;}
+        .scan-settings { display: flex; gap: 10px; margin-bottom: 10px; background: rgba(255,255,255,0.1); padding: 10px; border-radius: 8px;}
+        .scan-settings input, .scan-settings select { margin-bottom: 0; width: 50%; padding: 5px;}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <span>Role: <strong>INVENTORY MANAGER</strong></span>
+        <h2 style="margin:0; color:#00d2ff;">Stock Inward Portal</h2>
+        <a href="/logout" style="color:#ff4757; text-decoration:none;">Logout</a>
+    </div>
+
+    <div class="container">
+        <div class="input-section">
+            <div class="scanner-box">
+                <h3 style="margin-top:0; color:#00d2ff;">1. Auto Scan (Fast Inward)</h3>
+                <div class="scan-settings">
+                    <label style="font-size: 12px;">Qty per Scan:</label>
+                    <input type="number" id="scanQty" value="1" min="1">
+                    <label style="font-size: 12px;">Supplier:</label>
+                    <select id="scanSupplier">
+                        <option value="101">101 (Ludhiana)</option>
+                        <option value="102">102 (Delhi)</option>
+                    </select>
+                </div>
+                <div id="reader"></div>
+                <div id="scan-log" style="color:#aaa; font-family:monospace; margin-top:10px;">Ready to scan boxes...</div>
+            </div>
+
+            <div class="form-box">
+                <h3 style="margin-top:0; color:#00d2ff;">2. Manual Entry</h3>
+                <form id="manualForm" onsubmit="handleManualSubmit(event)">
+                    <input type="text" id="itemName" placeholder="Product Name" required>
+                    <input type="number" id="itemQty" placeholder="Quantity" required>
+                    <select id="supplierSelect">
+                        <option value="101">101 (Ludhiana Textiles)</option>
+                        <option value="102">102 (Delhi Garments)</option>
+                    </select>
+                    <button type="submit">+ Add to Database</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="table-box">
+            <h3 style="margin-top:0; color:#00d2ff;">Current Inventory Status</h3>
+            <table>
+                <tr><th>ID</th><th>Name</th><th>Stock</th><th>Supplier ID</th></tr>
+                {% for item in inventory %}
+                <tr>
+                    <td>#{{ item[0] }}</td>
+                    <td>{{ item[1] }}</td>
+                    <td style="color: #00ff00; font-weight:bold;">{{ item[2] }} Units</td>
+                    <td>{{ item[3] }}</td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+    </div>
+
+    <script>
+        let isProcessing = false; // SMART LOCK
+
+        function onScanSuccess(decodedText) {
+            if (isProcessing) return; 
+            isProcessing = true; 
+            
+            let logDiv = document.getElementById('scan-log');
+            logDiv.innerHTML = `<span style="color: #f1c40f;">⏳ Saving to DB: ${decodedText}...</span>`;
+            
+            let currentQty = document.getElementById('scanQty').value;
+            let currentSupplier = document.getElementById('scanSupplier').value;
+
+            fetch('/update_inventory', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ id: decodedText, qty: currentQty, supplier_id: currentSupplier, name: "Scanned Item" })
+            })
+            .then(res => res.json())
+            .then(data => {
+                // --- ASLI CHECK YAHAN HAI ---
+                if (data.status === "success") {
+                    logDiv.innerHTML = `<span style="color: #00ff00;">✅ Success! Added ${currentQty} units of #${decodedText}</span>`;
+                    setTimeout(() => window.location.reload(), 1000); 
+                } else {
+                    // Agar Python ne Error bheja, toh UI par Red color mein dikhega!
+                    logDiv.innerHTML = `<span style="color: #ff4757;">❌ ERROR: Invalid QR Code. Did you scan the old Web Link?</span>`;
+                    // Lock khol do taaki dobara scan kar sake
+                    setTimeout(() => { isProcessing = false; logDiv.innerHTML = "Ready to scan boxes..."; }, 3000); 
+                }
+            });
+        }
+        
+        let html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: {width: 250, height: 250} }, false);
+        html5QrcodeScanner.render(onScanSuccess);
+
+        function handleManualSubmit(event) {
+            event.preventDefault(); 
+            let id = Math.floor(Math.random() * 90000) + 10000; 
+            let name = document.getElementById('itemName').value;
+            let qty = document.getElementById('itemQty').value;
+            let supp = document.getElementById('supplierSelect').value; 
+            
+            fetch('/update_inventory', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ id: id, name: name, qty: qty, supplier_id: supp })
+            }).then(() => window.location.reload());
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>DBMS Admin - Owner View</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: linear-gradient(135deg, #0f2027, #203a43, #2c5364); color: #fff; padding: 20px; margin: 0;}
+        .header { display: flex; justify-content: space-between; align-items: center; padding: 10px 20px; background: rgba(0,0,0,0.5); border-radius: 8px; margin-bottom: 20px;}
+        .logout { color: #ff4757; text-decoration: none; font-weight: bold; border: 1px solid #ff4757; padding: 5px 10px; border-radius: 5px;}
+        h1 { color: #00d2ff; margin: 0; font-size: 24px;}
+        table { width: 100%; border-collapse: collapse; background: rgba(0, 0, 0, 0.4); border-radius: 10px; overflow: hidden; margin-top: 20px;}
+        th, td { padding: 15px; text-align: left; border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
+        th { background-color: #00d2ff; color: #000; text-transform: uppercase;}
+        .low-stock { background-color: rgba(255, 71, 87, 0.2); }
+        .low-stock td { color: #ff4757; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <span>Role: <strong>SUPER ADMIN</strong></span>
+        <h1>Executive Dashboard</h1>
+        <a href="/logout" class="logout">Logout</a>
+    </div>
+
+    <table>
+        <tr>
+            <th>Product ID</th>
+            <th>Product Name</th>
+            <th>Current Stock</th>
+            <th>Wholesale Price</th>
+            <th>Retail Price</th>
+            <th>Supplier Details</th>
+        </tr>
+        {% for item in inventory %}
+        <tr class="{{ 'low-stock' if item[2] < 5 else '' }}">
+            <td>#{{ item[0] }}</td>
+            <td>{{ item[1] }}</td>
+            <td style="font-weight: bold;">{{ item[2] }}</td>
+            <td>₹{{ item[5] }}</td> 
+            <td>₹{{ item[3] }}</td> 
+            <td>
+                <span style="color: #00d2ff;">#{{ item[4] }}</span> 
+                {% if item[4] == 101 %} - Ludhiana Textiles 
+                {% elif item[4] == 102 %} - Delhi Garments 
+                {% else %} - Local Vendor {% endif %}
+            </td> 
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>
